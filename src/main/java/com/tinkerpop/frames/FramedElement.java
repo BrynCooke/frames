@@ -1,13 +1,13 @@
 package com.tinkerpop.frames;
 
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+
+import net.sf.cglib.proxy.InvocationHandler;
+
 import com.tinkerpop.blueprints.Direction;
 import com.tinkerpop.blueprints.Element;
 import com.tinkerpop.blueprints.util.ElementHelper;
-
-import java.lang.annotation.Annotation;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 
 /**
  * The proxy class of a framed element.
@@ -58,16 +58,6 @@ public class FramedElement implements InvocationHandler {
     }
 
     public Object invoke(final Object proxy, final Method method, final Object[] arguments) {
-
-        if (method.equals(hashCodeMethod)) {
-            return this.element.hashCode();
-        } else if (method.equals(equalsMethod)) {
-            return this.proxyEquals(arguments[0]);
-        } else if (method.equals(toStringMethod)) {
-            return this.element.toString();
-        } else if (method.equals(asVertexMethod) || method.equals(asEdgeMethod)) {
-            return this.element;
-        }
 
         final Annotation[] annotations = method.getAnnotations();
         for (final Annotation annotation : annotations) {

@@ -1,12 +1,15 @@
 package com.tinkerpop.frames;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import net.sf.cglib.proxy.Enhancer;
+import net.sf.cglib.proxy.Factory;
 
 import com.tinkerpop.blueprints.Direction;
 import com.tinkerpop.blueprints.Edge;
@@ -35,6 +38,65 @@ import com.tinkerpop.frames.structures.FramedVertexIterable;
  */
 public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
 
+    public static class VertexFrameImpl implements VertexFrame {
+        private Vertex vertex;
+      
+        public final void setVertex(final Vertex vertex) {
+            this.vertex = vertex;
+        }
+
+        @Override
+        public final Vertex asVertex() {
+            return vertex;
+        }
+        
+        @Override
+        public final int hashCode() {
+            return vertex.hashCode();
+        }
+        
+        @Override
+        public final boolean equals(Object obj) {
+            return vertex.equals(obj);
+        }
+        
+        @Override
+        public String toString() {
+            return vertex.toString();
+        }
+        
+    }
+    
+    public static class EdgeFrameImpl implements EdgeFrame {
+        private Edge edge;
+      
+        public final void setEdge(final Edge edge) {
+            this.edge = edge;
+        }
+
+        @Override
+        public final Edge asEdge() {
+            return edge;
+        }
+        
+        @Override
+        public final int hashCode() {
+            return edge.hashCode();
+        }
+        
+        @Override
+        public final boolean equals(Object obj) {
+            return edge.equals(obj);
+        }
+        
+        @Override
+        public String toString() {
+            return edge.toString();
+        }
+        
+    }
+    private final Map<Class, Factory> classCache = new ConcurrentHashMap<Class, Factory>();
+    
     protected final T baseGraph;
     private final Map<Class<? extends Annotation>, AnnotationHandler<? extends Annotation>> annotationHandlers;
     private List<FrameInitializer> frameInitializers = new ArrayList<FrameInitializer>();
@@ -55,6 +117,19 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
         registerAnnotationHandler(new RangeAnnotationHandler());
         registerAnnotationHandler(new GremlinGroovyAnnotationHandler());
     }
+    
+        public <F> F generate(Class<F> superclass, Class frameKind, final FramedElement framedElement) {
+            Factory factory = classCache.get(frameKind);
+            if (factory == null) {
+                Enhancer enhancer = new Enhancer();
+                enhancer.setClassLoader(frameKind.getClassLoader());
+                factory = (Factory) enhancer.create(superclass, new Class[]{frameKind}, framedElement);
+                classCache.put(frameKind, factory);
+            }
+            
+    
+            return (F) factory.newInstance(framedElement);
+        }
 
     /**
      * A helper method for framing a vertex.
@@ -65,7 +140,9 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
      * @return a proxy objects backed by a vertex and interpreted from the perspective of the annotate interface
      */
     public <F> F frame(final Vertex vertex, final Class<F> kind) {
-        return (F) Proxy.newProxyInstance(kind.getClassLoader(), new Class[]{kind, VertexFrame.class}, new FramedElement(this, vertex));
+        VertexFrameImpl framed = generate(VertexFrameImpl.class, kind, new FramedElement(this, vertex));
+        framed.setVertex(vertex);
+        return (F) framed;
     }
 
     /**
@@ -78,7 +155,9 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
      * @return an iterable of proxy objects backed by an edge and interpreted from the perspective of the annotate interface
      */
     public <F> F frame(final Edge edge, final Direction direction, final Class<F> kind) {
-        return (F) Proxy.newProxyInstance(kind.getClassLoader(), new Class[]{kind, EdgeFrame.class}, new FramedElement(this, edge, direction));
+        EdgeFrameImpl framed = generate(EdgeFrameImpl.class, kind, new FramedElement(this, edge, direction));
+        framed.setEdge(edge);
+        return (F) framed;
     }
 
     /**
