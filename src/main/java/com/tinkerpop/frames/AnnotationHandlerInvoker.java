@@ -2,6 +2,8 @@ package com.tinkerpop.frames;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
 import net.sf.cglib.proxy.InvocationHandler;
 
@@ -24,19 +26,28 @@ public class AnnotationHandlerInvoker<T extends Annotation> implements Invocatio
     }
     
     @Override
-    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        Element element;
-        Direction direction = null;
-        if(proxy instanceof VertexFrame) {
-            element = ((VertexFrame) proxy).asVertex();
-        }
-        else {
-            EdgeFrameImpl edge = (EdgeFrameImpl)proxy;
-            direction = edge.getDirection();
-            element = edge.asEdge();
-        }
+    public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
+        return AccessController.doPrivileged(new PrivilegedAction() {
+
+            @Override
+            public Object run() {
+                Element element;
+                Direction direction = null;
+                if(proxy instanceof VertexFrame) {
+                    element = ((VertexFrame) proxy).asVertex();
+                }
+                else {
+                    EdgeFrameImpl edge = (EdgeFrameImpl)proxy;
+                    direction = edge.getDirection();
+                    element = edge.asEdge();
+                }
+
+                return handler.processElement(annotation, method, args, graph, element, direction);
+            }
+            
+        });
         
-        return handler.processElement(annotation, method, args, graph, element, direction);
+        
     }
 
 }
