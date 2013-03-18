@@ -17,27 +17,11 @@ import com.tinkerpop.blueprints.util.ElementHelper;
 public class FramedElement implements InvocationHandler {
 
     private final Direction direction;
-    protected final FramedGraph framedGraph;
     protected final Element element;
-    private static Method hashCodeMethod;
-    private static Method equalsMethod;
-    private static Method toStringMethod;
-    private static Method asVertexMethod;
-    private static Method asEdgeMethod;
+    private FramedGraph framedGraph;
 
     protected static Object NO_INVOCATION_PATH = new Object();
 
-    static {
-        try {
-            hashCodeMethod = Object.class.getMethod("hashCode");
-            equalsMethod = Object.class.getMethod("equals", new Class[]{Object.class});
-            toStringMethod = Object.class.getMethod("toString");
-            asVertexMethod = VertexFrame.class.getMethod("asVertex");
-            asEdgeMethod = EdgeFrame.class.getMethod("asEdge");
-        } catch (NoSuchMethodException e) {
-            throw new NoSuchMethodError(e.getMessage());
-        }
-    }
 
     public FramedElement(final FramedGraph framedGraph, final Element element, final Direction direction) {
         if (null == framedGraph) {
@@ -47,7 +31,6 @@ public class FramedElement implements InvocationHandler {
         if (null == element) {
             throw new IllegalArgumentException("Element can not be null");
         }
-
         this.element = element;
         this.framedGraph = framedGraph;
         this.direction = direction;
@@ -57,11 +40,14 @@ public class FramedElement implements InvocationHandler {
         this(framedGraph, element, null);
     }
 
-    public Object invoke(final Object proxy, final Method method, final Object[] arguments) {
+    public Object invoke(final Object proxy, final Method method, Object[] arguments) {
 
         final Annotation[] annotations = method.getAnnotations();
         for (final Annotation annotation : annotations) {
             if (this.framedGraph.hasAnnotationHandler(annotation.annotationType())) {
+                if (arguments != null && arguments.length == 0) {
+                    arguments = null;
+                }
                 return this.framedGraph.getAnnotationHandler(annotation.annotationType()).processElement(annotation, method, arguments, this.framedGraph, this.element, this.direction);
             }
         }
@@ -69,19 +55,5 @@ public class FramedElement implements InvocationHandler {
         return NO_INVOCATION_PATH;
     }
 
-    private Boolean proxyEquals(final Object other) {
-        if (other instanceof VertexFrame) {
-            return this.element.equals(((VertexFrame) other).asVertex());
-        } if (other instanceof EdgeFrame) {
-            return this.element.equals(((EdgeFrame) other).asEdge());
-        } else if (other instanceof Element) {
-            return ElementHelper.areEqual(this.element, other);
-        } else {
-            return Boolean.FALSE;
-        }
-    }
 
-    public Element getElement() {
-        return this.element;
-    }
 }
