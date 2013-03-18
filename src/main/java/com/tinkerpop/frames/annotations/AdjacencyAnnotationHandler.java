@@ -7,7 +7,6 @@ import com.tinkerpop.blueprints.Graph;
 import com.tinkerpop.blueprints.Vertex;
 import com.tinkerpop.frames.Adjacency;
 import com.tinkerpop.frames.ClassUtilities;
-import com.tinkerpop.frames.FramedElement;
 import com.tinkerpop.frames.FramedGraph;
 import com.tinkerpop.frames.VertexFrame;
 import com.tinkerpop.frames.structures.FramedVertexIterable;
@@ -45,7 +44,7 @@ public class AdjacencyAnnotationHandler implements AnnotationHandler<Adjacency> 
             Class<?> returnType = method.getReturnType();
             Vertex newVertex;
             Object returnValue = null;
-            if (arguments == null) {
+            if (arguments.length == 0) {
                 //Use this method to get the vertex so that the vertex initializer is called.
                 returnValue = framedGraph.addVertex(returnType, returnType);
                 newVertex = ((VertexFrame) returnValue).asVertex();

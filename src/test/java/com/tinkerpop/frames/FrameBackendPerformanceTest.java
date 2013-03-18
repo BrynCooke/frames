@@ -32,7 +32,7 @@ public class FrameBackendPerformanceTest {
         graph = TinkerGraphFactory.createTinkerGraph();
         
         Random random = new Random();
-        for (int i=0; i<50000; i++) {
+        for (int i=0; i<500000; i++) {
             int id = random.nextInt();
             Vertex relation = null;
 

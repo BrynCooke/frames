@@ -27,20 +27,6 @@ import java.util.HashSet;
  */
 public class FramedGraphTest extends GraphTest {
 
-    public void testAnnotationHandlingBasics() {
-        Graph graph = TinkerGraphFactory.createTinkerGraph();
-        FramedGraph<Graph> framedGraph = new FramedGraph<Graph>(graph);
-
-        int counter = framedGraph.getAnnotationHandlers().size();
-        for (AnnotationHandler a : new HashSet<AnnotationHandler>(framedGraph.getAnnotationHandlers())) {
-            assertTrue(framedGraph.hasAnnotationHandler(a.getAnnotationType()));
-            counter--;
-            framedGraph.unregisterAnnotationHandler(a.getAnnotationType());
-            assertEquals(framedGraph.getAnnotationHandlers().size(), counter);
-
-        }
-        assertEquals(framedGraph.getAnnotationHandlers().size(), 0);
-    }
 
     public void testFrameEquality() {
         Graph graph = TinkerGraphFactory.createTinkerGraph();

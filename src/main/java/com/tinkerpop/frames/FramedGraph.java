@@ -1,6 +1,7 @@
 package com.tinkerpop.frames;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -8,11 +9,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import net.sf.cglib.proxy.Callback;
+import net.sf.cglib.proxy.CallbackHelper;
 import net.sf.cglib.proxy.Enhancer;
 import net.sf.cglib.proxy.Factory;
+import net.sf.cglib.proxy.NoOp;
 
 import com.tinkerpop.blueprints.Direction;
 import com.tinkerpop.blueprints.Edge;
+import com.tinkerpop.blueprints.Element;
 import com.tinkerpop.blueprints.Features;
 import com.tinkerpop.blueprints.Graph;
 import com.tinkerpop.blueprints.GraphQuery;
@@ -60,8 +65,7 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
         public final boolean equals(Object obj) {
             if (obj instanceof VertexFrame) {
                 return vertex.equals(((VertexFrame) obj).asVertex());
-            }
-            else if (obj instanceof Vertex) {
+            } else if (obj instanceof Vertex) {
                 return vertex.equals(obj);
             }
             return false;
@@ -76,6 +80,7 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
 
     public static class EdgeFrameImpl implements EdgeFrame {
         private Edge edge;
+        private Direction direction;
 
         public final void setEdge(final Edge edge) {
             this.edge = edge;
@@ -95,13 +100,19 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
         public final String toString() {
             return edge.toString();
         }
+        
+        public Direction getDirection() {
+            return direction;
+        }
+        public void setDirection(Direction direction) {
+            this.direction = direction;
+        }
 
         @Override
         public final boolean equals(Object obj) {
             if (obj instanceof EdgeFrame) {
                 return edge.equals(((EdgeFrame) obj).asEdge());
-            }
-            else if (obj instanceof Edge) {
+            } else if (obj instanceof Edge) {
                 return edge.equals(obj);
             }
             return false;
@@ -110,9 +121,10 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
     }
 
     private final Map<Class, Factory> classCache = new ConcurrentHashMap<Class, Factory>();
+    private final Map<Class, CallbackHelper> callbackCache = new ConcurrentHashMap<Class, CallbackHelper>();
 
     protected final T baseGraph;
-    private final Map<Class<? extends Annotation>, AnnotationHandler<? extends Annotation>> annotationHandlers;
+    private final Map<Class<? extends Annotation>, AnnotationHandler<? extends Annotation>> annotationHandlers = new HashMap<Class<? extends Annotation>, AnnotationHandler<? extends Annotation>>();
     private List<FrameInitializer> frameInitializers = new ArrayList<FrameInitializer>();
 
     /**
@@ -124,7 +136,6 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
      */
     public FramedGraph(final T baseGraph) {
         this.baseGraph = baseGraph;
-        this.annotationHandlers = new HashMap<Class<? extends Annotation>, AnnotationHandler<? extends Annotation>>();
 
         registerAnnotationHandler(new PropertyAnnotationHandler());
         registerAnnotationHandler(new AdjacencyAnnotationHandler());
@@ -134,17 +145,35 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
         registerAnnotationHandler(new GremlinGroovyAnnotationHandler());
     }
 
-    public <F> F generate(Class<F> superclass, Class frameKind, final FramedElement framedElement) {
+    public <F> F generate(Class<F> superclass, Class frameKind, final Element element) {
         Factory factory = classCache.get(frameKind);
+        
         if (factory == null) {
+            Class[] interfaces = new Class[] { frameKind };
+            CallbackHelper callbackHelper = new CallbackHelper(superclass, interfaces) {
+                
+                @Override
+                protected Object getCallback(Method method) {
+                    for(Annotation annotation : method.getAnnotations()) {
+                        AnnotationHandler handler = annotationHandlers.get(annotation.annotationType());
+                        if(handler != null) {
+                            return new AnnotationHandlerInvoker(FramedGraph.this, annotation, handler);
+                        }
+                    }
+                    return NoOp.INSTANCE;
+                }
+            };
+                
             Enhancer enhancer = new Enhancer();
             enhancer.setClassLoader(frameKind.getClassLoader());
-            factory = (Factory) enhancer.create(superclass, new Class[] { frameKind }, framedElement);
+            factory = (Factory) enhancer.create(superclass, interfaces, callbackHelper, callbackHelper.getCallbacks());
             classCache.put(frameKind, factory);
+            callbackCache.put(frameKind, callbackHelper);
         }
 
-        return (F) factory.newInstance(framedElement);
+        return (F) factory.newInstance(callbackCache.get(frameKind).getCallbacks());
     }
+
 
     /**
      * A helper method for framing a vertex.
@@ -159,7 +188,7 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
      *         perspective of the annotate interface
      */
     public <F> F frame(final Vertex vertex, final Class<F> kind) {
-        VertexFrameImpl framed = generate(VertexFrameImpl.class, kind, new FramedElement(this, vertex));
+        VertexFrameImpl framed = generate(VertexFrameImpl.class, kind, vertex);
         framed.setVertex(vertex);
         return (F) framed;
     }
@@ -179,8 +208,9 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
      *         from the perspective of the annotate interface
      */
     public <F> F frame(final Edge edge, final Direction direction, final Class<F> kind) {
-        EdgeFrameImpl framed = generate(EdgeFrameImpl.class, kind, new FramedElement(this, edge, direction));
+        EdgeFrameImpl framed = generate(EdgeFrameImpl.class, kind, edge);
         framed.setEdge(edge);
+        framed.setDirection(direction);
         return (F) framed;
     }
 
@@ -411,38 +441,8 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
      */
     public void registerAnnotationHandler(final AnnotationHandler<? extends Annotation> handler) {
         this.annotationHandlers.put(handler.getAnnotationType(), handler);
-    }
+      }
 
-    /**
-     * @param annotationType
-     *            the type of annotation handled by the annotation handler
-     * @return the annotation handler associated with the specified type
-     */
-    public AnnotationHandler getAnnotationHandler(final Class<? extends Annotation> annotationType) {
-        return this.annotationHandlers.get(annotationType);
-    }
-
-    /**
-     * @param annotationType
-     *            the type of annotation handled by the annotation handler
-     * @return a boolean indicating if the framedGraph has registered an
-     *         annotation handler for the specified type
-     */
-    public boolean hasAnnotationHandler(final Class<? extends Annotation> annotationType) {
-        return this.annotationHandlers.containsKey(annotationType);
-    }
-
-    /**
-     * @param annotationType
-     *            the type of the annotation handler to remove
-     */
-    public void unregisterAnnotationHandler(final Class<? extends Annotation> annotationType) {
-        this.annotationHandlers.remove(annotationType);
-    }
-
-    public Collection<AnnotationHandler<? extends Annotation>> getAnnotationHandlers() {
-        return this.annotationHandlers.values();
-    }
 
     /**
      * Register a <code>FrameInitializer</code> that will be called whenever a
