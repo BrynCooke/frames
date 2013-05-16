@@ -38,7 +38,8 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
     protected final T baseGraph;
     private final Map<Class<? extends Annotation>, AnnotationHandler<? extends Annotation>> annotationHandlers;
     private List<FrameInitializer> frameInitializers = new ArrayList<FrameInitializer>();
-
+    private TypeResolver typeResolver = TypeResolver.DEFAULT;
+    
     /**
      * Construct a FramedGraph that will frame the elements of the underlying graph.
      *
@@ -55,6 +56,10 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
         registerAnnotationHandler(new RangeAnnotationHandler());
         registerAnnotationHandler(new GremlinGroovyAnnotationHandler());
     }
+    
+    public void setTypeResolver(TypeResolver typeResolver) {
+		this.typeResolver = typeResolver;
+	}
 
     /**
      * A helper method for framing a vertex.
@@ -65,7 +70,7 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
      * @return a proxy objects backed by a vertex and interpreted from the perspective of the annotate interface
      */
     public <F> F frame(final Vertex vertex, final Class<F> kind) {
-        return (F) Proxy.newProxyInstance(kind.getClassLoader(), new Class[]{kind, VertexFrame.class}, new FramedElement(this, vertex));
+        return (F) Proxy.newProxyInstance(kind.getClassLoader(), new Class[]{typeResolver.resolveType(vertex, kind), VertexFrame.class}, new FramedElement(this, vertex));
     }
 
     /**
@@ -78,7 +83,7 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
      * @return an iterable of proxy objects backed by an edge and interpreted from the perspective of the annotate interface
      */
     public <F> F frame(final Edge edge, final Direction direction, final Class<F> kind) {
-        return (F) Proxy.newProxyInstance(kind.getClassLoader(), new Class[]{kind, EdgeFrame.class}, new FramedElement(this, edge, direction));
+        return (F) Proxy.newProxyInstance(kind.getClassLoader(), new Class[]{typeResolver.resolveType(edge, kind), EdgeFrame.class}, new FramedElement(this, edge, direction));
     }
 
     /**
@@ -180,7 +185,6 @@ public class FramedGraph<T extends Graph> implements Graph, WrapperGraph<T> {
         for (FrameInitializer initializer : frameInitializers) {
             initializer.initElement(kind, this, edge);
         }
-
         return this.frame(edge, direction, kind);
     }
 
